@@ -59,3 +59,6 @@
 2025-12-29 22:54:19 - [5/8] Remote origin...
 2025-12-29 22:54:19 - ✓ Remote configurée
 2025-12-29 22:54:19 - [6/8] Commit initial et push vers main...
+2025-12-29 22:54:19 - → Fichiers ajoutés au staging
+2025-12-29 22:54:19 - → Commit initial créé
+2025-12-29 22:54:20 - ✗ ERREUR git push main
