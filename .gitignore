@@ -1,3 +1,14 @@
-# Logs de création du repo - jamais pushés
-creation_log/
+# Template : shell
+# Description : shell scriting compatihle with v110 and minimum
+# Maintainer : Bruno DELNOZ
+# Last update : 2025-10-25
+# Compatible with : shell command
 logs/
+output/
+infos/
+result/
+results/
+*.log
+*.zip
+*.tar.gz
+*.rar
