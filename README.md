@@ -21,7 +21,6 @@ Script unique pour gérer la création et la suppression de dépôts Git (local 
 ```bash
 ./create_repo.sh --gitignore python vscode macos
 ```
-Le script demande une seule fois si un `.gitignore` existant doit être remplacé ou complété.
 
 ## Aide
 ```bash

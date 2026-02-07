@@ -289,7 +289,6 @@ EOF_TEMPLATES
 
 create_gitignore() {
     local type="$1"
-    local mode="${2:-prompt}"
     local gitignore_path=".gitignore"
 
     if [ -z "$type" ]; then
@@ -308,39 +307,26 @@ create_gitignore() {
     if [ -f "$gitignore_path" ]; then
         log "⚠ Un fichier .gitignore existe déjà dans ce répertoire"
 
-        case "$mode" in
-            append)
-                log "→ Mode : Ajout au fichier existant"
-                gitignore_path=".gitignore.new"
-                ;;
-            replace)
-                log "→ Mode : Remplacement du fichier"
-                mv ".gitignore" ".gitignore.backup.$(date +%Y%m%d_%H%M%S)"
-                log "✓ Backup créé : .gitignore.backup.$(date +%Y%m%d_%H%M%S)"
-                ;;
-            prompt|*)
-                if [ "$DRY_RUN" = false ]; then
-                    read -p "Voulez-vous [a]jouter au fichier existant ou [r]emplacer ? (a/r) : " choice
-                    case "$choice" in
-                        a|A)
-                            log "→ Mode : Ajout au fichier existant"
-                            gitignore_path=".gitignore.new"
-                            ;;
-                        r|R)
-                            log "→ Mode : Remplacement du fichier"
-                            mv ".gitignore" ".gitignore.backup.$(date +%Y%m%d_%H%M%S)"
-                            log "✓ Backup créé : .gitignore.backup.$(date +%Y%m%d_%H%M%S)"
-                            ;;
-                        *)
-                            log "✗ Choix invalide. Opération annulée."
-                            exit 1
-                            ;;
-                    esac
-                else
-                    log "[DRY-RUN] La question [a]jouter ou [r]emplacer serait posée"
-                fi
-                ;;
-        esac
+        if [ "$DRY_RUN" = false ]; then
+            read -p "Voulez-vous [a]jouter au fichier existant ou [r]emplacer ? (a/r) : " choice
+            case "$choice" in
+                a|A)
+                    log "→ Mode : Ajout au fichier existant"
+                    gitignore_path=".gitignore.new"
+                    ;;
+                r|R)
+                    log "→ Mode : Remplacement du fichier"
+                    mv ".gitignore" ".gitignore.backup.$(date +%Y%m%d_%H%M%S)"
+                    log "✓ Backup créé : .gitignore.backup.$(date +%Y%m%d_%H%M%S)"
+                    ;;
+                *)
+                    log "✗ Choix invalide. Opération annulée."
+                    exit 1
+                    ;;
+            esac
+        else
+            log "[DRY-RUN] La question [a]jouter ou [r]emplacer serait posée"
+        fi
     fi
 
     log "→ Génération du contenu .gitignore pour : $type"
@@ -600,7 +586,7 @@ GITIGNORE
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon\r
+Icon
 ._*
 .Spotlight-V100
 .Trashes
@@ -759,54 +745,6 @@ GITIGNORE
     log ""
 }
 
-apply_gitignore_templates() {
-    local templates=("$@")
-    local initial_mode="prompt"
-    local subsequent_mode="append"
-    local existing=false
-
-    if [ ${#templates[@]} -eq 0 ]; then
-        return 0
-    fi
-
-    if [ -f ".gitignore" ]; then
-        existing=true
-    fi
-
-    if [ "$existing" = true ]; then
-        if [ "$DRY_RUN" = false ]; then
-            read -p "Un .gitignore existe déjà. [a]jouter ou [r]emplacer ? (a/r) : " choice
-            case "$choice" in
-                a|A)
-                    initial_mode="append"
-                    ;;
-                r|R)
-                    initial_mode="replace"
-                    ;;
-                *)
-                    log "✗ Choix invalide. Opération annulée."
-                    exit 1
-                    ;;
-            esac
-        else
-            log "[DRY-RUN] La question [a]jouter ou [r]emplacer serait posée"
-            initial_mode="append"
-        fi
-    else
-        initial_mode="new"
-    fi
-
-    local index=0
-    for tpl in "${templates[@]}"; do
-        if [ $index -eq 0 ]; then
-            create_gitignore "$tpl" "$initial_mode"
-        else
-            create_gitignore "$tpl" "$subsequent_mode"
-        fi
-        index=$((index + 1))
-    done
-}
-
 create_from_template() {
     local template="$1"
     log "Application du template : '$template'"
@@ -957,7 +895,9 @@ create_repo() {
     fi
 
     if [ ${#GITIGNORE_TEMPLATES[@]} -gt 0 ]; then
-        apply_gitignore_templates "${GITIGNORE_TEMPLATES[@]}"
+        for tpl in "${GITIGNORE_TEMPLATES[@]}"; do
+            create_gitignore "$tpl"
+        done
     elif [ -n "$TEMPLATE" ]; then
         log "→ .gitignore via template: $TEMPLATE"
     else
@@ -1181,7 +1121,9 @@ case "$ACTION" in
         delete_remote
         ;;
     "gitignore")
-        apply_gitignore_templates "${GITIGNORE_TEMPLATES[@]}"
+        for tpl in "${GITIGNORE_TEMPLATES[@]}"; do
+            create_gitignore "$tpl"
+        done
         ;;
     *)
         log "✗ ERREUR : Aucune action spécifiée."
