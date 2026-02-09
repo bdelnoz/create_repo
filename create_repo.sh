@@ -154,48 +154,21 @@ validate_repo_name() {
     fi
 }
 
-create_readme_from_template() {
-    case "$1" in
-        "python")
-            cat > README.md << EOF
-# $REPO_NAME
-
-## Installation
-\`\`\`bash
-pip install -r requirements.txt
-\`\`\`
-
-## Utilisation
-\`\`\`bash
-python main.py
-\`\`\`
-
-Auteur: Bruno DELNOZ
+create_readme_header() {
+    cat > README.md << EOF
+################################################################################
+# DOCUMENT INFORMATION
+################################################################################
+# Document Name    : README.md
+# Document Full Path & name : README.md
+# Author         : Bruno DELNOZ
+# Email          : bruno.delnoz@protonmail.com
+# Version        : V1.0
+# Date  / Time   : 2026-02-09 19:22:16
+# Project : $REPO_NAME
+# Short description : Project overview
+################################################################################
 EOF
-            ;;
-        "web")
-            cat > README.md << EOF
-# $REPO_NAME
-
-## Installation
-\`\`\`bash
-npm install
-\`\`\`
-
-## Développement
-\`\`\`bash
-npm run dev
-\`\`\`
-
-Auteur: Bruno DELNOZ
-EOF
-            ;;
-        *)
-            echo "# $REPO_NAME" > README.md
-            echo "" >> README.md
-            echo "Auteur: Bruno DELNOZ" >> README.md
-            ;;
-    esac
 }
 
 check_existing_git() {
@@ -254,11 +227,7 @@ create_repo() {
         log "→ README.md existe, SKIP création"
     else
         if [ "$DRY_RUN" = false ]; then
-            if [ -n "$TEMPLATE" ]; then
-                create_readme_from_template "$TEMPLATE"
-            else
-                echo "# $REPO_NAME" > README.md
-            fi
+            create_readme_header
         fi
         log "✓ README.md créé"
     fi
