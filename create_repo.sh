@@ -3,15 +3,13 @@
 # Auteur : Bruno DELNOZ | Email : bruno.delnoz@protonmail.com
 # Script : create_repo.sh
 # Version : v5.0 - Date : 2025-10-25
-# Compatible avec : create_gitignore.sh v1.0
 # Changelog v5.0 :
 #   - Suppression commits automatiques (utilisateur fait manuellement)
 #   - Gestion intelligente répertoire existant (mkdir -p si absent)
 #   - Conservation .git existant (pas de suppression)
 #   - Branche par défaut : main (plus master)
 #   - Branche de travail : working (minuscules)
-#   - Externalisation .gitignore vers create_gitignore.sh
-#   - README.md : skip si existe | .gitignore : fusion avec séparateurs
+#   - README.md : skip si existe
 ################################################################################
 
 LOG_FILE="log.create_repo.v5.0.log"
@@ -23,8 +21,6 @@ OWNER=""
 DEFAULT_BRANCH="main"
 LOCAL_PATH=""
 REPO_NAME=""
-GITIGNORE_TEMPLATES=()
-GITIGNORE_SCRIPT="$(dirname "$0")/create_gitignore.sh"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -46,7 +42,6 @@ OPTIONS PRINCIPALES:
 CONFIGURATION:
   --public / --private          Visibilité (défaut: private)
   --template <type>             Template: python, web, basic
-  --gitignore [templates...]    Crée .gitignore (vide si sans args)
 
 SYSTÈME:
   --simulate, -s                Mode simulation
@@ -58,14 +53,11 @@ SYSTÈME:
 EXEMPLES:
   ./create_repo.sh --exec ~/dev/projet
   ./create_repo.sh --exec ~/dev/app --template python
-  ./create_repo.sh --exec ~/dev/web --gitignore python vscode macos
-  ./create_repo.sh --exec ~/dev/api --template web --gitignore docker
 
 COMPORTEMENT v5.0:
   • Répertoire local : créé si absent, conservé si existant
   • .git existant : CONSERVÉ (plus de suppression)
   • README.md existant : SKIP création
-  • .gitignore existant : FUSION avec nouveaux templates
   • AUCUN commit auto : tu fais add/commit/push manuellement
   • Branche défaut : main | Branche travail : working
   • Fin script : tu es sur branche 'working'
@@ -76,7 +68,6 @@ WORKFLOW MANUEL APRÈS CRÉATION:
   git push -u origin main
 
 AUTEUR: Bruno DELNOZ - bruno.delnoz@protonmail.com
-Compatible: create_gitignore.sh v1.0
 EOF
     exit 0
 }
@@ -92,12 +83,10 @@ v5.0 - 2025-10-25 : REFONTE MAJEURE
   • Gestion intelligente répertoire existant (mkdir -p)
   • Conservation .git existant
   • Branche main (plus master), branche working (minuscules)
-  • Externalisation .gitignore (create_gitignore.sh)
-  • README.md : skip si existe | .gitignore : fusion
+  • README.md : skip si existe
   • Dépôt distant créé VIDE
   • Messages finaux détaillés avec workflow manuel
 
-v4.1 - 2025-10-25 : Fonction create_gitignore intégrée
 v4.0 - 2025-10-21 : Correction remote origin existante
 
 AUTEUR: Bruno DELNOZ
@@ -274,27 +263,6 @@ create_repo() {
         log "✓ README.md créé"
     fi
     
-    # .gitignore
-    if [ ${#GITIGNORE_TEMPLATES[@]} -gt 0 ]; then
-        if [ "${GITIGNORE_TEMPLATES[0]}" = "empty" ]; then
-            log "→ .gitignore vide"
-            [ "$DRY_RUN" = false ] && touch .gitignore
-        else
-            log "→ .gitignore avec templates: ${GITIGNORE_TEMPLATES[*]}"
-            if [ "$DRY_RUN" = false ] && [ -f "$GITIGNORE_SCRIPT" ]; then
-                for tpl in "${GITIGNORE_TEMPLATES[@]}"; do
-                    "$GITIGNORE_SCRIPT" "$tpl" --no-log --auto-append || log "⚠ Template $tpl échoué"
-                done
-            fi
-        fi
-    elif [ -n "$TEMPLATE" ]; then
-        log "→ .gitignore via template: $TEMPLATE"
-        [ "$DRY_RUN" = false ] && [ -f "$GITIGNORE_SCRIPT" ] && \
-            "$GITIGNORE_SCRIPT" "$TEMPLATE" --no-log --auto-append
-    else
-        log "→ Pas de .gitignore demandé"
-    fi
-    
     # [4/6] Dépôt distant
     log "[4/6] Dépôt distant GitHub..."
     if [ "$DRY_RUN" = false ]; then
@@ -433,14 +401,6 @@ while [[ $# -gt 0 ]]; do
         --public) VISIBILITY="public"; shift ;;
         --private) VISIBILITY="private"; shift ;;
         --template) TEMPLATE="$2"; shift 2 ;;
-        --gitignore)
-            shift
-            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
-                GITIGNORE_TEMPLATES+=("$1")
-                shift
-            done
-            [ ${#GITIGNORE_TEMPLATES[@]} -eq 0 ] && GITIGNORE_TEMPLATES=("empty")
-            ;;
         --simulate|-s) DRY_RUN=true; log "⚠ MODE SIMULATION"; shift ;;
         --prerequis|-pr) check_prerequisites; exit 0 ;;
         --install|-i) install_prerequisites ;;

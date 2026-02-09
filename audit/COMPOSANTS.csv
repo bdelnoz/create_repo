@@ -1,3 +1,0 @@
-id,name,type,description,entrypoint,notes
-1,create_repo.sh,script,Bash script providing repository lifecycle operations,create_repo.sh,Single entry point
-2,README.md,documentation,Repository usage summary,README.md,User-facing documentation
