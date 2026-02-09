@@ -2,17 +2,23 @@
 ################################################################################
 # Auteur : Bruno DELNOZ | Email : bruno.delnoz@protonmail.com
 # Script : create_repo.sh
-# Version : v5.0 - Date : 2025-10-25
+# Version : v5.1 - Date : 2026-02-09
+# Changelog v5.1 :
+#   - README.md standardisé (header DOCUMENT INFORMATION)
+#   - .gitignore créé/complété après README
+#   - Branche de travail : initial_branch
+#   - Commit/push auto sur main + git status en fin
+#   - README/.gitignore traités avant le reste
 # Changelog v5.0 :
 #   - Suppression commits automatiques (utilisateur fait manuellement)
 #   - Gestion intelligente répertoire existant (mkdir -p si absent)
 #   - Conservation .git existant (pas de suppression)
 #   - Branche par défaut : main (plus master)
-#   - Branche de travail : working (minuscules)
+#   - Branche de travail : initial_branch (minuscules)
 #   - README.md : skip si existe
 ################################################################################
 
-LOG_FILE="log.create_repo.v5.0.log"
+LOG_FILE="log.create_repo.v5.1.log"
 DRY_RUN=false
 REPO_CREATED=false
 TEMPLATE=""
@@ -29,7 +35,7 @@ log() {
 print_help() {
     cat << 'EOF'
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                    CREATE_REPO.SH v5.0 - AIDE                              ║
+║                    CREATE_REPO.SH v5.1 - AIDE                              ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 USAGE: ./create_repo.sh [OPTIONS]
@@ -54,18 +60,18 @@ EXEMPLES:
   ./create_repo.sh --exec ~/dev/projet
   ./create_repo.sh --exec ~/dev/app --template python
 
-COMPORTEMENT v5.0:
+COMPORTEMENT v5.1:
   • Répertoire local : créé si absent, conservé si existant
   • .git existant : CONSERVÉ (plus de suppression)
   • README.md existant : SKIP création
   • AUCUN commit auto : tu fais add/commit/push manuellement
-  • Branche défaut : main | Branche travail : working
-  • Fin script : tu es sur branche 'working'
+  • Branche défaut : main | Branche travail : initial_branch
+  • Fin script : tu es sur branche 'main'
 
-WORKFLOW MANUEL APRÈS CRÉATION:
-  cd <chemin> && git status && git add . && git commit -m "Initial commit"
-  git push -u origin working && git checkout main && git merge working
+WORKFLOW AUTOMATIQUE APRÈS CRÉATION:
+  cd <chemin> && git add . && git commit -m "init repo - FIRST COMMIT"
   git push -u origin main
+  git status
 
 AUTEUR: Bruno DELNOZ - bruno.delnoz@protonmail.com
 EOF
@@ -78,11 +84,17 @@ show_changelog() {
 ║                    CHANGELOG - CREATE_REPO.SH                              ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
+v5.1 - 2026-02-09 : MISE À JOUR
+  • README standardisé (DOCUMENT INFORMATION)
+  • .gitignore créé/complété après README
+  • Branche initial_branch + commit/push auto sur main
+  • README/.gitignore traités avant le reste
+
 v5.0 - 2025-10-25 : REFONTE MAJEURE
   • Suppression commits automatiques (workflow manuel)
   • Gestion intelligente répertoire existant (mkdir -p)
   • Conservation .git existant
-  • Branche main (plus master), branche working (minuscules)
+  • Branche main (plus master), branche initial_branch (minuscules)
   • README.md : skip si existe
   • Dépôt distant créé VIDE
   • Messages finaux détaillés avec workflow manuel
@@ -171,6 +183,58 @@ create_readme_header() {
 EOF
 }
 
+ensure_gitignore() {
+    local gitignore_path=".gitignore"
+    local gitignore_content=(
+        "# PROJECT SPECIFIC"
+        "uploads"
+        "*.pid"
+        "__pycache__"
+        "*.log"
+        "*.db"
+        "creation_log"
+        "*-swp"
+        "*.tmp"
+        "*.log"
+        "*.bak"
+        "*.pid"
+        "# ========================================"
+        "# Template: shell"
+        "# Added: 2026-02-04 22:19:59"
+        "# ========================================"
+        "logs/"
+        "output/"
+        "infos/"
+        "result/"
+        "results/"
+        "backup/"
+        "*.log"
+        "*.zip"
+        "*.tar.gz"
+        "*.rar"
+    )
+
+    if [ ! -f "$gitignore_path" ]; then
+        printf "%s\n" "${gitignore_content[@]}" > "$gitignore_path"
+        log "✓ .gitignore créé"
+        return
+    fi
+
+    local missing_entries=0
+    for entry in "${gitignore_content[@]}"; do
+        if ! grep -Fxq "$entry" "$gitignore_path"; then
+            echo "$entry" >> "$gitignore_path"
+            missing_entries=$((missing_entries + 1))
+        fi
+    done
+
+    if [ "$missing_entries" -gt 0 ]; then
+        log "✓ .gitignore mis à jour ($missing_entries entrées ajoutées)"
+    else
+        log "→ .gitignore déjà à jour"
+    fi
+}
+
 check_existing_git() {
     if [ -d ".git" ]; then
         log "→ Dépôt Git existant détecté, conservation historique"
@@ -197,8 +261,8 @@ create_repo() {
     
     validate_repo_name
     
-    # [1/6] Répertoire local
-    log "[1/6] Répertoire local: $LOCAL_PATH"
+    # [1/7] Répertoire local
+    log "[1/7] Répertoire local: $LOCAL_PATH"
     if [ ! -d "$LOCAL_PATH" ]; then
         log "→ Création répertoire..."
         if [ "$DRY_RUN" = false ]; then
@@ -213,14 +277,8 @@ create_repo() {
     fi
     log "✓ Accès répertoire OK"
     
-    # [2/6] Git existant
-    log "[2/6] Vérification Git..."
-    if [ "$DRY_RUN" = false ]; then
-        check_existing_git
-    fi
-    
-    # [3/6] Fichiers de base
-    log "[3/6] Fichiers de base..."
+    # [2/7] Fichiers de base (avant toute autre opération)
+    log "[2/7] Fichiers de base (README en priorité)..."
     
     # README
     if [ -f "README.md" ]; then
@@ -231,9 +289,20 @@ create_repo() {
         fi
         log "✓ README.md créé"
     fi
+
+    # .gitignore
+    if [ "$DRY_RUN" = false ]; then
+        ensure_gitignore
+    fi
     
-    # [4/6] Dépôt distant
-    log "[4/6] Dépôt distant GitHub..."
+    # [3/7] Vérification Git
+    log "[3/7] Vérification Git..."
+    if [ "$DRY_RUN" = false ]; then
+        check_existing_git
+    fi
+    
+    # [4/7] Dépôt distant
+    log "[4/7] Dépôt distant GitHub..."
     if [ "$DRY_RUN" = false ]; then
         if ! gh repo view "$OWNER/$REPO_NAME" &>/dev/null; then
             gh repo create "$OWNER/$REPO_NAME" --"$VISIBILITY" --confirm || {
@@ -244,8 +313,8 @@ create_repo() {
     fi
     log "✓ Dépôt distant OK (VIDE)"
     
-    # [5/6] Remote origin
-    log "[5/6] Remote origin..."
+    # [5/7] Remote origin
+    log "[5/7] Remote origin..."
     if [ "$DRY_RUN" = false ]; then
         git remote add origin "https://github.com/$OWNER/$REPO_NAME.git" || {
             log "✗ ERREUR remote"
@@ -254,15 +323,30 @@ create_repo() {
     fi
     log "✓ Remote configurée"
     
-    # [6/6] Branche working
-    log "[6/6] Branche working..."
+    # [6/7] Branche initial_branch
+    log "[6/7] Branche initial_branch..."
     if [ "$DRY_RUN" = false ]; then
-        if ! git show-ref --verify --quiet refs/heads/working; then
-            git branch working
+        if ! git show-ref --verify --quiet refs/heads/initial_branch; then
+            git branch initial_branch
         fi
-        git checkout working
+        git checkout initial_branch
     fi
-    log "✓ Sur branche working"
+    log "✓ Sur branche initial_branch"
+    
+    # [7/7] Commit et push main
+    log "[7/7] Commit et push main..."
+    if [ "$DRY_RUN" = false ]; then
+        git checkout main
+        git add .
+        if ! git diff --cached --quiet; then
+            git commit -m "init repo - FIRST COMMIT"
+        else
+            log "→ Aucun changement à commit"
+        fi
+        git push -u origin main
+        git status
+    fi
+    log "✓ Push main OK"
     
     # Récapitulatif
     log "═══════════════════════════════════════════════════════════════════════════"
@@ -275,20 +359,15 @@ create_repo() {
     log "  • Visibilité: $VISIBILITY"
     log "  • Local    : $LOCAL_PATH"
     log "  • Distant  : https://github.com/$OWNER/$REPO_NAME (VIDE)"
-    log "  • Branches : main, working (locale ACTIVE)"
-    log "  • Fichiers : Untracked (prêts pour commit manuel)"
+    log "  • Branches : main, initial_branch (locale ACTIVE: main)"
+    log "  • Fichiers : Suivis et poussés sur main"
     [ -n "$TEMPLATE" ] && log "  • Template : $TEMPLATE"
     log ""
-    log "⚠ IMPORTANT: Dépôt distant VIDE, aucun commit auto"
+    log "⚠ IMPORTANT: Dépôt distant initialisé avec commit auto"
     log ""
-    log "PROCHAINES ÉTAPES (MANUEL):"
+    log "PROCHAINES ÉTAPES:"
     log "  cd $LOCAL_PATH"
     log "  git status"
-    log "  git add ."
-    log "  git commit -m 'Initial commit'"
-    log "  git push -u origin working"
-    log "  git checkout main && git merge working"
-    log "  git push -u origin main"
     log ""
     log "═══════════════════════════════════════════════════════════════════════════"
     
