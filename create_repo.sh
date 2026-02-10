@@ -454,6 +454,11 @@ create_repo() {
             log "→ Aucun changement à commit"
         fi
         git push -u origin main
+        if ! gh repo edit "$OWNER/$REPO_NAME" --default-branch main; then
+            log "⚠ Impossible de forcer la branche par défaut distante sur main"
+        else
+            log "✓ Branche par défaut distante: main"
+        fi
         git status
     fi
     log "✓ Push main OK"
