@@ -314,6 +314,8 @@ ensure_gitignore() {
         "*.zip"
         "*.tar.gz"
         "*.rar"
+        "certs/"
+        "secrets/"
     )
 
     if [ ! -f "$gitignore_path" ]; then
