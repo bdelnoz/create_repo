@@ -69,6 +69,8 @@ COMPORTEMENT v5.1:
   • .git existant : CONSERVÉ (plus de suppression)
   • README/.gitignore gérés si activés
   • Commit auto sur main + git status en fin
+  • README.md existant : SKIP création
+  • AUCUN commit auto : tu fais add/commit/push manuellement
   • Branche défaut : main | Branche travail : initial_branch
   • Fin script : tu es sur branche 'main'
 
@@ -394,6 +396,11 @@ create_repo() {
         else
             log "[DRY-RUN] .gitignore"
         fi
+    fi
+
+    # .gitignore
+    if [ "$DRY_RUN" = false ]; then
+        ensure_gitignore
     fi
     
     # [3/7] Vérification Git
