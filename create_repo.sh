@@ -27,6 +27,8 @@ OWNER=""
 DEFAULT_BRANCH="main"
 LOCAL_PATH=""
 REPO_NAME=""
+DO_README=true
+DO_GITIGNORE=true
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -48,6 +50,8 @@ OPTIONS PRINCIPALES:
 CONFIGURATION:
   --public / --private          Visibilité (défaut: private)
   --template <type>             Template: python, web, basic
+  --readme / --no-readme        Activer/désactiver actions README
+  --gitignore / --no-gitignore  Activer/désactiver actions .gitignore
 
 SYSTÈME:
   --simulate, -s                Mode simulation
@@ -63,6 +67,8 @@ EXEMPLES:
 COMPORTEMENT v5.1:
   • Répertoire local : créé si absent, conservé si existant
   • .git existant : CONSERVÉ (plus de suppression)
+  • README/.gitignore gérés si activés
+  • Commit auto sur main + git status en fin
   • README.md existant : SKIP création
   • AUCUN commit auto : tu fais add/commit/push manuellement
   • Branche défaut : main | Branche travail : initial_branch
@@ -166,21 +172,117 @@ validate_repo_name() {
     fi
 }
 
-create_readme_header() {
-    cat > README.md << EOF
+build_readme_header() {
+    local document_name="$1"
+    local document_path="$2"
+    local author="$3"
+    local email="$4"
+    local version="$5"
+    local datetime="$6"
+    local project="$7"
+    local description="$8"
+    cat << EOF
 ################################################################################
 # DOCUMENT INFORMATION
 ################################################################################
-# Document Name    : README.md
-# Document Full Path & name : README.md
-# Author         : Bruno DELNOZ
-# Email          : bruno.delnoz@protonmail.com
-# Version        : V1.0
-# Date  / Time   : 2026-02-09 19:22:16
-# Project : $REPO_NAME
-# Short description : Project overview
+# Document Name    : ${document_name}
+# Document Full Path & name : ${document_path}
+# Author         : ${author}
+# Email          : ${email}
+# Version        : ${version}
+# Date  / Time   : ${datetime}
+# Project : ${project}
+# Short description : ${description}
 ################################################################################
 EOF
+}
+
+get_readme_header_value() {
+    local file="$1"
+    local key="$2"
+    local default="$3"
+    local value
+    value=$(sed -n "s/^# ${key}[[:space:]]*: //p" "$file" | head -n 1)
+    if [ -n "$value" ]; then
+        echo "$value"
+    else
+        echo "$default"
+    fi
+}
+
+strip_existing_header() {
+    local file="$1"
+    awk '
+    BEGIN { skip=0 }
+    {
+        if (!skip && $0 ~ /^################################################################################$/) {
+            hash_line = $0
+            if (getline next_line) {
+                if (next_line ~ /^# DOCUMENT INFORMATION$/) {
+                    skip = 1
+                    while (getline line) {
+                        if (line ~ /^################################################################################$/) {
+                            skip = 0
+                            break
+                        }
+                    }
+                    next
+                } else {
+                    print hash_line
+                    print next_line
+                    next
+                }
+            }
+        }
+        if (!skip) {
+            print
+        }
+    }
+    ' "$file"
+}
+
+ensure_readme_header() {
+    local readme_path="README.md"
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    if [ ! -f "$readme_path" ]; then
+        build_readme_header "README.md" "README.md" "Bruno DELNOZ" \
+            "bruno.delnoz@protonmail.com" "V1.0" "2026-02-09 19:22:16" \
+            "$REPO_NAME" "Project overview" > "$readme_path"
+        log "✓ README.md créé"
+        return
+    fi
+
+    local document_name
+    local document_path
+    local author
+    local email
+    local version
+    local datetime
+    local project
+    local description
+
+    document_name=$(get_readme_header_value "$readme_path" "Document Name" "README.md")
+    document_path=$(get_readme_header_value "$readme_path" "Document Full Path & name" "README.md")
+    author=$(get_readme_header_value "$readme_path" "Author" "Bruno DELNOZ")
+    email=$(get_readme_header_value "$readme_path" "Email" "bruno.delnoz@protonmail.com")
+    version=$(get_readme_header_value "$readme_path" "Version" "V1.0")
+    datetime=$(get_readme_header_value "$readme_path" "Date  / Time" "2026-02-09 19:22:16")
+    project=$(get_readme_header_value "$readme_path" "Project" "$REPO_NAME")
+    description=$(get_readme_header_value "$readme_path" "Short description" "Project overview")
+
+    build_readme_header "$document_name" "$document_path" "$author" "$email" \
+        "$version" "$datetime" "$project" "$description" > "$tmp_file"
+
+    if grep -q "^# DOCUMENT INFORMATION$" "$readme_path"; then
+        strip_existing_header "$readme_path" >> "$tmp_file"
+    else
+        cat "$readme_path" >> "$tmp_file"
+    fi
+
+    mv "$tmp_file" "$readme_path"
+    log "✓ README.md mis à jour"
 }
 
 ensure_gitignore() {
@@ -280,14 +382,20 @@ create_repo() {
     # [2/7] Fichiers de base (avant toute autre opération)
     log "[2/7] Fichiers de base (README en priorité)..."
     
-    # README
-    if [ -f "README.md" ]; then
-        log "→ README.md existe, SKIP création"
-    else
+    if [ "$DO_README" = true ]; then
         if [ "$DRY_RUN" = false ]; then
-            create_readme_header
+            ensure_readme_header
+        else
+            log "[DRY-RUN] README.md"
         fi
-        log "✓ README.md créé"
+    fi
+
+    if [ "$DO_GITIGNORE" = true ]; then
+        if [ "$DRY_RUN" = false ]; then
+            ensure_gitignore
+        else
+            log "[DRY-RUN] .gitignore"
+        fi
     fi
 
     # .gitignore
@@ -449,6 +557,10 @@ while [[ $# -gt 0 ]]; do
         --public) VISIBILITY="public"; shift ;;
         --private) VISIBILITY="private"; shift ;;
         --template) TEMPLATE="$2"; shift 2 ;;
+        --readme) DO_README=true; shift ;;
+        --no-readme) DO_README=false; shift ;;
+        --gitignore) DO_GITIGNORE=true; shift ;;
+        --no-gitignore) DO_GITIGNORE=false; shift ;;
         --simulate|-s) DRY_RUN=true; log "⚠ MODE SIMULATION"; shift ;;
         --prerequis|-pr) check_prerequisites; exit 0 ;;
         --install|-i) install_prerequisites ;;
