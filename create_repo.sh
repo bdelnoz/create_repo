@@ -415,7 +415,7 @@ create_repo() {
     log "[4/7] Dépôt distant GitHub..."
     if [ "$DRY_RUN" = false ]; then
         if ! gh repo view "$OWNER/$REPO_NAME" &>/dev/null; then
-            gh repo create "$OWNER/$REPO_NAME" --"$VISIBILITY" --confirm || {
+            gh repo create "$REPO_NAME" --"$VISIBILITY" --confirm || {
                 log "✗ ERREUR création dépôt distant"
                 exit 1
             }
