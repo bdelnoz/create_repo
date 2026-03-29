@@ -2,7 +2,12 @@
 ################################################################################
 # Auteur : Bruno DELNOZ | Email : bruno.delnoz@protonmail.com
 # Script : create_repo.sh
-# Version : v5.4 - Date : 2026-03-29
+# Version : v5.5 - Date : 2026-03-29
+# Changelog v5.5 :
+#   - Added mandatory AGENTS.md sync from script source directory to target repository
+#   - AGENTS.md now always overwrites target copy and logs absolute source/target paths
+#   - Fixed README behavior to prevent content duplication on repeated runs
+#   - README existing content is preserved and only metadata header is normalized
 # Changelog v5.4 :
 #   - Updated visibility switch examples to use `pwd` notation as requested
 #   - Kept path-based resolution behavior unchanged
@@ -29,7 +34,11 @@
 #   - README.md : skip si existe
 ################################################################################
 
-LOG_FILE="log.create_repo.v5.4.log"
+SCRIPT_PATH="$(readlink -f "$0")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+MASTER_AGENTS_PATH="${SCRIPT_DIR}/AGENTS.md"
+
+LOG_FILE="log.create_repo.v5.5.log"
 DRY_RUN=false
 REPO_CREATED=false
 TEMPLATE=""
@@ -49,7 +58,7 @@ log() {
 print_help() {
     cat << 'EOF'
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                    CREATE_REPO.SH v5.4 - HELP                              ║
+║                    CREATE_REPO.SH v5.5 - HELP                              ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 USAGE: ./create_repo.sh [OPTIONS]
@@ -81,12 +90,14 @@ EXAMPLES:
   ./create_repo.sh --switchtoprivate owner/my-repo
   ./create_repo.sh --switchtopublic `pwd`
 
-BEHAVIOR v5.4:
+BEHAVIOR v5.5:
   • Répertoire local : créé si absent, conservé si existant
+  • AGENTS.md master copié depuis le dossier source de create_repo.sh
+  • AGENTS.md cible toujours écrasé par la version master
   • .git existant : CONSERVÉ (plus de suppression)
   • README/.gitignore gérés si activés
+  • README existant : pas de duplication, contenu conservé, header normalisé
   • Commit auto sur main + git status en fin
-  • README.md existant : SKIP création
   • AUCUN commit auto : tu fais add/commit/push manuellement
   • Branche défaut : main | Branche travail : initial_branch
   • Fin script : tu es sur branche 'main'
@@ -110,6 +121,13 @@ show_changelog() {
 v5.4 - 2026-03-29 : UPDATE
   • Updated examples to use `pwd` notation for local path input
   • Kept path-aware repo resolution and non-destructive switch behavior
+
+v5.5 - 2026-03-29 : UPDATE
+  • Added mandatory AGENTS.md synchronization from script source directory
+  • Target AGENTS.md is always overwritten by the master version
+  • Added absolute source/target path logging for AGENTS.md sync
+  • Fixed README handling to avoid duplicated content on repeated runs
+  • README existing content is preserved while metadata header is normalized
 
 v5.3 - 2026-03-29 : UPDATE
   • Added support for --switchtopublic/--switchtoprivate with local path input
@@ -203,37 +221,27 @@ validate_repo_name() {
     fi
 }
 
-build_readme_header() {
+build_markdown_metadata_header() {
     local document_name="$1"
-    local document_path="$2"
-    local author="$3"
-    local email="$4"
-    local version="$5"
-    local datetime="$6"
-    local project="$7"
-    local description="$8"
+    local version="$2"
+    local datetime="$3"
     cat << EOF
-################################################################################
-# DOCUMENT INFORMATION
-################################################################################
-# Document Name    : ${document_name}
-# Document Full Path & name : ${document_path}
-# Author         : ${author}
-# Email          : ${email}
-# Version        : ${version}
-# Date  / Time   : ${datetime}
-# Project : ${project}
-# Short description : ${description}
-################################################################################
+<!--
+Document : ${document_name}
+Auteur : Bruno DELNOZ
+Email : bruno.delnoz@protonmail.com
+Version : ${version}
+Date : ${datetime}
+-->
 EOF
 }
 
-get_readme_header_value() {
+extract_markdown_metadata_value() {
     local file="$1"
     local key="$2"
     local default="$3"
     local value
-    value=$(sed -n "s/^# ${key}[[:space:]]*: //p" "$file" | head -n 1)
+    value=$(sed -n "s/^${key}[[:space:]]*:[[:space:]]*//p" "$file" | head -n 1)
     if [ -n "$value" ]; then
         echo "$value"
     else
@@ -241,34 +249,20 @@ get_readme_header_value() {
     fi
 }
 
-strip_existing_header() {
+extract_readme_body_without_metadata() {
     local file="$1"
     awk '
-    BEGIN { skip=0 }
-    {
-        if (!skip && $0 ~ /^################################################################################$/) {
-            hash_line = $0
-            if (getline next_line) {
-                if (next_line ~ /^# DOCUMENT INFORMATION$/) {
-                    skip = 1
-                    while (getline line) {
-                        if (line ~ /^################################################################################$/) {
-                            skip = 0
-                            break
-                        }
-                    }
-                    next
-                } else {
-                    print hash_line
-                    print next_line
-                    next
-                }
-            }
+    BEGIN { in_metadata=0; metadata_consumed=0 }
+    NR==1 && $0 ~ /^<!--$/ { in_metadata=1; metadata_consumed=1; next }
+    in_metadata == 1 {
+        if ($0 ~ /^-->$/) {
+            in_metadata=0
+            next
         }
-        if (!skip) {
-            print
-        }
+        next
     }
+    metadata_consumed == 1 && $0 ~ /^[[:space:]]*$/ { next }
+    { print }
     ' "$file"
 }
 
@@ -276,44 +270,44 @@ ensure_readme_header() {
     local readme_path="README.md"
     local tmp_file
     tmp_file=$(mktemp)
+    local now_datetime
+    now_datetime="$(date '+%Y-%m-%d %H:%M:%S')"
 
     if [ ! -f "$readme_path" ]; then
-        build_readme_header "README.md" "README.md" "Bruno DELNOZ" \
-            "bruno.delnoz@protonmail.com" "V1.0" "2026-02-09 19:22:16" \
-            "$REPO_NAME" "Project overview" > "$readme_path"
+        build_markdown_metadata_header "README.md" "v1.0.0" "$now_datetime" > "$readme_path"
+        printf "\n# %s\n" "$REPO_NAME" >> "$readme_path"
         log "✓ README.md créé"
         return
     fi
 
-    local document_name
-    local document_path
-    local author
-    local email
     local version
     local datetime
-    local project
-    local description
+    version=$(extract_markdown_metadata_value "$readme_path" "Version" "v1.0.0")
+    datetime=$(extract_markdown_metadata_value "$readme_path" "Date" "$now_datetime")
 
-    document_name=$(get_readme_header_value "$readme_path" "Document Name" "README.md")
-    document_path=$(get_readme_header_value "$readme_path" "Document Full Path & name" "README.md")
-    author=$(get_readme_header_value "$readme_path" "Author" "Bruno DELNOZ")
-    email=$(get_readme_header_value "$readme_path" "Email" "bruno.delnoz@protonmail.com")
-    version=$(get_readme_header_value "$readme_path" "Version" "V1.0")
-    datetime=$(get_readme_header_value "$readme_path" "Date  / Time" "2026-02-09 19:22:16")
-    project=$(get_readme_header_value "$readme_path" "Project" "$REPO_NAME")
-    description=$(get_readme_header_value "$readme_path" "Short description" "Project overview")
-
-    build_readme_header "$document_name" "$document_path" "$author" "$email" \
-        "$version" "$datetime" "$project" "$description" > "$tmp_file"
-
-    if grep -q "^# DOCUMENT INFORMATION$" "$readme_path"; then
-        strip_existing_header "$readme_path" >> "$tmp_file"
-    else
-        cat "$readme_path" >> "$tmp_file"
-    fi
+    build_markdown_metadata_header "README.md" "$version" "$datetime" > "$tmp_file"
+    printf "\n" >> "$tmp_file"
+    extract_readme_body_without_metadata "$readme_path" >> "$tmp_file"
 
     mv "$tmp_file" "$readme_path"
-    log "✓ README.md mis à jour"
+    log "✓ README.md existant normalisé (header metadata), contenu conservé sans duplication"
+}
+
+sync_master_agents_to_target_repo() {
+    local target_agents_path="$LOCAL_PATH/AGENTS.md"
+    local source_agents_absolute
+    local target_agents_absolute
+
+    source_agents_absolute=$(readlink -f "$MASTER_AGENTS_PATH")
+    target_agents_absolute=$(readlink -m "$target_agents_path")
+
+    if [ ! -f "$MASTER_AGENTS_PATH" ]; then
+        log "✗ ERREUR : AGENTS.md master introuvable dans la source script ($MASTER_AGENTS_PATH)"
+        exit 1
+    fi
+
+    cp -f "$MASTER_AGENTS_PATH" "$target_agents_path"
+    log "✓ AGENTS.md synchronized from master: $source_agents_absolute -> $target_agents_absolute"
 }
 
 ensure_gitignore() {
@@ -412,8 +406,16 @@ create_repo() {
     fi
     log "✓ Accès répertoire OK"
     
-    # [2/7] Fichiers de base (avant toute autre opération)
-    log "[2/7] Fichiers de base (README en priorité)..."
+    # [2/8] Synchronisation AGENTS.md master
+    log "[2/8] Synchronisation AGENTS.md master..."
+    if [ "$DRY_RUN" = false ]; then
+        sync_master_agents_to_target_repo
+    else
+        log "[DRY-RUN] AGENTS.md master sync ($MASTER_AGENTS_PATH -> $LOCAL_PATH/AGENTS.md)"
+    fi
+
+    # [3/8] Fichiers de base (README en priorité)
+    log "[3/8] Fichiers de base (README en priorité)..."
     
     if [ "$DO_README" = true ]; then
         if [ "$DRY_RUN" = false ]; then
@@ -431,19 +433,14 @@ create_repo() {
         fi
     fi
 
-    # .gitignore
-    if [ "$DRY_RUN" = false ]; then
-        ensure_gitignore
-    fi
-    
-    # [3/7] Vérification Git
-    log "[3/7] Vérification Git..."
+    # [4/8] Vérification Git
+    log "[4/8] Vérification Git..."
     if [ "$DRY_RUN" = false ]; then
         check_existing_git
     fi
     
-    # [4/7] Dépôt distant
-    log "[4/7] Dépôt distant GitHub..."
+    # [5/8] Dépôt distant
+    log "[5/8] Dépôt distant GitHub..."
     if [ "$DRY_RUN" = false ]; then
         if ! gh repo view "$OWNER/$REPO_NAME" &>/dev/null; then
             gh repo create "$REPO_NAME" --"$VISIBILITY" --confirm || {
@@ -454,8 +451,8 @@ create_repo() {
     fi
     log "✓ Dépôt distant OK (VIDE)"
     
-    # [5/7] Remote origin
-    log "[5/7] Remote origin..."
+    # [6/8] Remote origin
+    log "[6/8] Remote origin..."
     if [ "$DRY_RUN" = false ]; then
         git remote add origin "https://github.com/$OWNER/$REPO_NAME.git" || {
             log "✗ ERREUR remote"
@@ -464,8 +461,8 @@ create_repo() {
     fi
     log "✓ Remote configurée"
     
-    # [6/7] Branche initial_branch
-    log "[6/7] Branche initial_branch..."
+    # [7/8] Branche initial_branch
+    log "[7/8] Branche initial_branch..."
     if [ "$DRY_RUN" = false ]; then
         if ! git show-ref --verify --quiet refs/heads/initial_branch; then
             git branch initial_branch
@@ -474,8 +471,8 @@ create_repo() {
     fi
     log "✓ Sur branche initial_branch"
     
-    # [7/7] Commit et push main
-    log "[7/7] Commit et push main..."
+    # [8/8] Commit et push main
+    log "[8/8] Commit et push main..."
     if [ "$DRY_RUN" = false ]; then
         git checkout main
         git add .
