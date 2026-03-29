@@ -2,7 +2,18 @@
 ################################################################################
 # Auteur : Bruno DELNOZ | Email : bruno.delnoz@protonmail.com
 # Script : create_repo.sh
-# Version : v5.1 - Date : 2026-02-09
+# Version : v5.4 - Date : 2026-03-29
+# Changelog v5.4 :
+#   - Updated visibility switch examples to use `pwd` notation as requested
+#   - Kept path-based resolution behavior unchanged
+# Changelog v5.3 :
+#   - Added path-aware switch arguments: --switchtopublic <path|repo|owner/repo>
+#   - Added auto-detection from local folder and origin remote URL when available
+#   - Updated help/changelog/docs for local-path visibility switching
+# Changelog v5.2 :
+#   - Added --switchtopublic <repo> and --switchtoprivate <repo>
+#   - Added non-destructive visibility switch using gh repo edit
+#   - Help and changelog updated for visibility switch actions
 # Changelog v5.1 :
 #   - README.md standardisé (header DOCUMENT INFORMATION)
 #   - .gitignore créé/complété après README
@@ -18,7 +29,7 @@
 #   - README.md : skip si existe
 ################################################################################
 
-LOG_FILE="log.create_repo.v5.1.log"
+LOG_FILE="log.create_repo.v5.4.log"
 DRY_RUN=false
 REPO_CREATED=false
 TEMPLATE=""
@@ -29,6 +40,7 @@ LOCAL_PATH=""
 REPO_NAME=""
 DO_README=true
 DO_GITIGNORE=true
+SWITCH_TARGET=""
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
@@ -37,7 +49,7 @@ log() {
 print_help() {
     cat << 'EOF'
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                    CREATE_REPO.SH v5.1 - AIDE                              ║
+║                    CREATE_REPO.SH v5.4 - HELP                              ║
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 USAGE: ./create_repo.sh [OPTIONS]
@@ -46,6 +58,8 @@ OPTIONS PRINCIPALES:
   --exec <chemin>               Crée dépôt local + distant
   --delete-local <chemin>       Supprime dépôt local (avec backup)
   --delete-remote <nom>         Supprime dépôt distant GitHub
+  --switchtopublic <target>     Switch visibility to public (path|repo|owner/repo)
+  --switchtoprivate <target>    Switch visibility to private (path|repo|owner/repo)
 
 CONFIGURATION:
   --public / --private          Visibilité (défaut: private)
@@ -60,11 +74,14 @@ SYSTÈME:
   --changelog, -ch              Changelog
   --help, -h                    Cette aide
 
-EXEMPLES:
+EXAMPLES:
   ./create_repo.sh --exec ~/dev/projet
   ./create_repo.sh --exec ~/dev/app --template python
+  ./create_repo.sh --switchtopublic my-repo
+  ./create_repo.sh --switchtoprivate owner/my-repo
+  ./create_repo.sh --switchtopublic `pwd`
 
-COMPORTEMENT v5.1:
+BEHAVIOR v5.4:
   • Répertoire local : créé si absent, conservé si existant
   • .git existant : CONSERVÉ (plus de suppression)
   • README/.gitignore gérés si activés
@@ -89,6 +106,20 @@ show_changelog() {
 ╔════════════════════════════════════════════════════════════════════════════╗
 ║                    CHANGELOG - CREATE_REPO.SH                              ║
 ╚════════════════════════════════════════════════════════════════════════════╝
+
+v5.4 - 2026-03-29 : UPDATE
+  • Updated examples to use `pwd` notation for local path input
+  • Kept path-aware repo resolution and non-destructive switch behavior
+
+v5.3 - 2026-03-29 : UPDATE
+  • Added support for --switchtopublic/--switchtoprivate with local path input
+  • Added auto-detection of owner/repo from git remote origin when available
+  • Added fallback to folder name as repository name for local path inputs
+
+v5.2 - 2026-03-29 : UPDATE
+  • Added --switchtopublic <repo> action
+  • Added --switchtoprivate <repo> action
+  • Added non-destructive visibility switch with gh repo edit
 
 v5.1 - 2026-02-09 : MISE À JOUR
   • README standardisé (DOCUMENT INFORMATION)
@@ -527,6 +558,78 @@ delete_remote() {
     log "✓ Suppression distante terminée"
 }
 
+build_repo_target_from_switch_input() {
+    local input_target="$1"
+    local target_repo=""
+    local candidate_path=""
+    local origin_url=""
+    
+    if [ -z "$input_target" ]; then
+        input_target="$(pwd)"
+    fi
+    
+    if [ -d "$input_target" ]; then
+        candidate_path="$input_target"
+    elif [ "$input_target" = "." ]; then
+        candidate_path="$(pwd)"
+    fi
+    
+    if [ -n "$candidate_path" ]; then
+        REPO_NAME="$(basename "$candidate_path")"
+        
+        if [ -d "$candidate_path/.git" ]; then
+            origin_url=$(git -C "$candidate_path" remote get-url origin 2>/dev/null || true)
+        fi
+        
+        if [[ "$origin_url" =~ github\.com[:/]([^/]+)/([^/.]+)(\.git)?$ ]]; then
+            target_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        else
+            target_repo="$OWNER/$REPO_NAME"
+        fi
+    else
+        if [[ "$input_target" == */* ]]; then
+            target_repo="$input_target"
+            REPO_NAME="$(basename "$input_target")"
+        else
+            REPO_NAME="$input_target"
+            target_repo="$OWNER/$REPO_NAME"
+        fi
+    fi
+    
+    echo "$target_repo"
+}
+
+switch_repo_visibility() {
+    log "═══════════════════════════════════════════════════════════════════════════"
+    log "VISIBILITY SWITCH (NON-DESTRUCTIVE)"
+    log "═══════════════════════════════════════════════════════════════════════════"
+    
+    local target_repo
+    target_repo=$(build_repo_target_from_switch_input "$SWITCH_TARGET")
+    
+    validate_repo_name
+    
+    log "[1/4] Input target: $SWITCH_TARGET"
+    log "[2/4] Resolved repository: $target_repo"
+    log "[3/4] Requested visibility: $VISIBILITY"
+    
+    if [ "$DRY_RUN" = false ]; then
+        gh repo view "$target_repo" &>/dev/null || { log "✗ Repository does not exist or is not accessible"; exit 1; }
+        gh repo edit "$target_repo" --visibility "$VISIBILITY" || { log "✗ Visibility switch failed"; exit 1; }
+    else
+        log "[DRY-RUN] gh repo edit $target_repo --visibility $VISIBILITY"
+    fi
+    
+    log "[4/4] Verification"
+    if [ "$DRY_RUN" = false ]; then
+        gh repo view "$target_repo" --json visibility --jq .visibility | while read -r current_visibility; do
+            log "✓ Current visibility: $current_visibility"
+        done
+    fi
+    
+    log "✓ Visibility switch completed without repository destruction"
+}
+
 load_config() {
     OWNER=$(gh api user --jq .login 2>/dev/null)
     [ -z "$OWNER" ] && OWNER="bdelnoz"
@@ -556,6 +659,20 @@ while [[ $# -gt 0 ]]; do
             REPO_NAME="$2"
             shift 2
             ;;
+        --switchtopublic)
+            ACTION="switch_visibility"
+            SWITCH_TARGET="$2"
+            REPO_NAME=$(basename "$2")
+            VISIBILITY="public"
+            shift 2
+            ;;
+        --switchtoprivate)
+            ACTION="switch_visibility"
+            SWITCH_TARGET="$2"
+            REPO_NAME=$(basename "$2")
+            VISIBILITY="private"
+            shift 2
+            ;;
         --public) VISIBILITY="public"; shift ;;
         --private) VISIBILITY="private"; shift ;;
         --template) TEMPLATE="$2"; shift 2 ;;
@@ -582,6 +699,7 @@ case "$ACTION" in
     "exec") create_repo ;;
     "delete_local") delete_local ;;
     "delete_remote") delete_remote ;;
+    "switch_visibility") switch_repo_visibility ;;
     *)
         log "✗ ERREUR: Aucune action spécifiée"
         exit 1
