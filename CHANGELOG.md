@@ -2,10 +2,17 @@
 Document : CHANGELOG.md
 Auteur : Bruno DELNOZ
 Email : bruno.delnoz@protonmail.com
-Version : v5.4.0
-Date : 2026-03-29 00:45
+Version : v5.5.0
+Date : 2026-03-29 22:53
 -->
 # CHANGELOG
+
+## v5.5.0 - 2026-03-29 22:53
+Author: Bruno DELNOZ
+- Added mandatory `AGENTS.md` synchronization from the `create_repo.sh` source directory to each created repository.
+- Enforced overwrite behavior for target `AGENTS.md` using the master source file.
+- Added log output with absolute source and destination paths for `AGENTS.md` synchronization.
+- Fixed repeated-run `README.md` duplication by normalizing only metadata header and preserving full existing body content.
 
 ## v5.4.0 - 2026-03-29 00:45
 Author: Bruno DELNOZ

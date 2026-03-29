@@ -15,13 +15,22 @@
 Document : README.md
 Auteur : Bruno DELNOZ
 Email : bruno.delnoz@protonmail.com
-Version : v5.4.0
-Date : 2026-03-29 00:45
+Version : v5.5.0
+Date : 2026-03-29 22:53
 -->
 # create_repo.sh
 
 ## Overview
 `create_repo.sh` automates local and remote GitHub repository operations, including non-destructive visibility switching.
+
+## New AGENTS.md synchronization behavior
+- On repository creation, the script now copies the master `AGENTS.md` from the `create_repo.sh` source directory into the target repository.
+- If `AGENTS.md` already exists in the target repository, it is overwritten by the master version.
+- The operation log now includes absolute source and target paths for this synchronization.
+
+## README idempotency fix
+- Re-running `--exec` no longer duplicates `README.md` content.
+- If `README.md` already exists, the script updates only the metadata header block and preserves the full remaining content as-is.
 
 ## New visibility switch actions
 - `--switchtopublic <repo>`: changes an existing repository visibility to public.
